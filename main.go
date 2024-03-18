@@ -1,10 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type Cat struct {
@@ -13,116 +12,78 @@ type Cat struct {
 	Age  int    `json:"age"`
 }
 
-var cats = []Cat{
+var cats = []*Cat{
 	{ID: "1", Name: "Whiskers", Age: 3},
 	{ID: "2", Name: "Shadow", Age: 5},
 }
 
 func main() {
-	http.HandleFunc("/cats", handleCats)
-	http.HandleFunc("/cats/", handleCat)
+	app := fiber.New()
+
+	app.Get("/cats", getCats)
+	app.Post("/cats", createCat)
+	app.Get("/cats/:id", getCat)
+	app.Put("/cats/:id", updateCat)
+	app.Delete("/cats/:id", deleteCat)
+
 	log.Println("Listening on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(app.Listen(":8080"))
 }
 
-func handleCats(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		getCats(w, r)
-	case http.MethodPost:
-		createCat(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method Not Allowed")
-	}
+func getCats(c *fiber.Ctx) error {
+	return c.JSON(cats)
 }
 
-func handleCat(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/cats/"):]
+func createCat(c *fiber.Ctx) error {
+	cat := new(Cat)
 
-	switch r.Method {
-	case http.MethodGet:
-		getCat(w, r, id)
-	case http.MethodPut:
-		updateCat(w, r, id)
-	// case http.MethodPatch:
-	// 	updateCatPartial(w, r, id)
-	case http.MethodDelete:
-		deleteCat(w, r, id)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method Not Allowed")
-	}
-}
-
-func getCats(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cats)
-}
-
-func createCat(w http.ResponseWriter, r *http.Request) {
-	var newCat Cat
-
-	if err := json.NewDecoder(r.Body).Decode(&newCat); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Bad Request")
-		return
+	if err := c.BodyParser(cat); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Bad Request")
 	}
 
-	cats = append(cats, newCat)
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(newCat)
+	cats = append(cats, cat)
+	return c.Status(fiber.StatusCreated).JSON(cat)
 }
 
-func getCat(w http.ResponseWriter, _ *http.Request, id string) {
+func getCat(c *fiber.Ctx) error {
+	id := c.Params("id")
+
 	for _, cat := range cats {
 		if cat.ID == id {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(cat)
-			return
+			return c.JSON(cat)
 		}
 	}
 
-	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "Not Found")
+	return c.Status(fiber.StatusNotFound).SendString("Not Found")
 }
 
-func updateCat(w http.ResponseWriter, r *http.Request, id string) {
-	var updatedCat Cat
+func updateCat(c *fiber.Ctx) error {
+	id := c.Params("id")
+	updatedCat := new(Cat)
 
-	if err := json.NewDecoder(r.Body).Decode(&updatedCat); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Bad Request")
-		return
+	if err := c.BodyParser(updatedCat); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Bad Request")
 	}
 
 	for i, cat := range cats {
 		if cat.ID == id {
 			cats[i] = updatedCat
-			json.NewEncoder(w).Encode(updatedCat)
-			return
+			return c.JSON(updatedCat)
 		}
 	}
 
-	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "Not Found")
+	return c.Status(fiber.StatusNotFound).SendString("Not Found")
 }
 
-// func updateCatPartial(w http.ResponseWriter, r *http.Request, id string) {
-// 	w.WriteHeader(http.StatusNotImplemented)
-// 	fmt.Fprintf(w, "Not Implemented")
-// }
+func deleteCat(c *fiber.Ctx) error {
+	id := c.Params("id")
 
-func deleteCat(w http.ResponseWriter, _ *http.Request, id string) {
 	for i, cat := range cats {
 		if cat.ID == id {
 			cats = append(cats[:i], cats[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
-			return
+			return c.SendStatus(fiber.StatusNoContent)
 		}
 	}
 
-	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "Not Found")
+	return c.Status(fiber.StatusNotFound).SendString("Not Found")
 }
